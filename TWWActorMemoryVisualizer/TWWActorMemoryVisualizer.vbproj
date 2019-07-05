@@ -76,6 +76,12 @@
     <Import Include="System.Threading.Tasks" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ListBoxWindowActList.Designer.vb">
+      <DependentUpon>ListBoxWindowActList.vb</DependentUpon>
+    </Compile>
+    <Compile Include="ListBoxWindowActList.vb">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="ListBoxWindow.Designer.vb">
       <DependentUpon>ListBoxWindow.vb</DependentUpon>
     </Compile>
@@ -112,6 +118,9 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="ListBoxWindowActList.resx">
+      <DependentUpon>ListBoxWindowActList.vb</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="ListBoxWindow.resx">
       <DependentUpon>ListBoxWindow.vb</DependentUpon>
     </EmbeddedResource>

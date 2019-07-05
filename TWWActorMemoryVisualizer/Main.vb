@@ -7,10 +7,15 @@ Public Class Main
 
     Public pipeClient As NamedPipeClientStream
     Public Connected As Boolean = False
+
     Public CurrentSortingColumn As Integer = 0
     Public CurrentSortingOrder As SortOrder = System.Windows.Forms.SortOrder.Ascending
 
+    Public CurrentSortingActListColumn As Integer = 0
+    Public CurrentSortingActListOrder As SortOrder = System.Windows.Forms.SortOrder.Ascending
+
     Dim ListBoxWindowInstance As ListBoxWindow
+    Dim ListBoxWindowActListInstance As ListBoxWindowActList
     Dim PictureBoxWindowInstance As VisualBar
     Dim g As Graphics
     Dim FindSlotSize As Integer = -1
@@ -18,6 +23,7 @@ Public Class Main
     Private Sub Main_Load(sender As Object, e As EventArgs) Handles MyBase.Load
 
         ListBoxWindowInstance = New ListBoxWindow
+        ListBoxWindowActListInstance = New ListBoxWindowActList
         PictureBoxWindowInstance = New VisualBar
 
         g = PictureBoxWindowInstance.PictureBox_Main.CreateGraphics()
@@ -56,6 +62,7 @@ Public Class Main
         Button_Connect.Text = "Disconnect from Dolphin"
 
         ListBoxWindowInstance.Show()
+        ListBoxWindowActListInstance.Show()
         PictureBoxWindowInstance.Show()
 
         Timer_Update.Start()
@@ -71,6 +78,7 @@ Public Class Main
         End If
 
         ListBoxWindowInstance.Dispose()
+        ListBoxWindowActListInstance.Dispose()
         PictureBoxWindowInstance.Dispose()
 
     End Sub
@@ -78,6 +86,7 @@ Public Class Main
     Private Sub DisconnectFromDolphin()
 
         ListBoxWindowInstance.Hide()
+        ListBoxWindowActListInstance.Hide()
         PictureBoxWindowInstance.Hide()
 
         Timer_Update.Stop()
@@ -101,7 +110,7 @@ Public Class Main
 
         End If
 
-        'Send Request
+        'Send Request for ACT data
         Dim request As New StreamString(pipeClient)
 
         If (request.WriteString("ACT Memory") = -1) Then
@@ -386,7 +395,135 @@ Public Class Main
 
                 End If
 
+            End If
 
+        Catch ex As IOException
+
+            DisconnectFromDolphin()
+            Exit Sub
+
+        End Try
+
+        If (pipeClient.IsConnected = False) Then
+
+            DisconnectFromDolphin()
+            Exit Sub
+
+        End If
+
+        'Send Request for ACT List
+        If (request.WriteString("ACT List") = -1) Then
+
+            DisconnectFromDolphin()
+            Exit Sub
+
+        End If
+
+        Try
+
+            Dim returnedCommand As Byte = pipeClient.ReadByte()
+
+            If (returnedCommand = 3) Then
+
+                Dim topItemIndex As Integer = 0
+                Dim currentSelectedIndex As Integer = -1
+
+                Try
+
+                    topItemIndex = ListBoxWindowActListInstance.ListView1.TopItem.Index
+                    currentSelectedIndex = ListBoxWindowActListInstance.ListView1.SelectedItems(0).Index
+
+                Catch ex As Exception
+
+                End Try
+
+                ListBoxWindowActListInstance.ListView1.BeginUpdate()
+                ListBoxWindowActListInstance.ListView1.Items.Clear()
+
+                Dim countElements As Integer = 64
+                Dim bufferSize As UInt32
+                Dim streamBuffer As Byte()
+
+                bufferSize = countElements * 32 '32 bytes per index
+
+                streamBuffer = New Byte(bufferSize) {}
+                pipeClient.Read(streamBuffer, 0, bufferSize) 'Read data into buffer
+
+                Dim currentPos As UInt32 = 0
+
+                Dim name As String
+                Dim instanceCount As UInt16
+                Dim loadingPtr As UInt32
+                Dim instancePtr As UInt32
+                Dim dataPtr As UInt32
+                Dim data2Ptr As UInt32
+
+                For n As Integer = 1 To countElements
+
+                    name = System.Text.Encoding.ASCII.GetString(streamBuffer, currentPos, 14)
+
+                    'Name is empty, clear it
+                    If name.Chars(0) = Nothing Then
+                        name = ""
+                    End If
+
+                    instanceCount = Read16(streamBuffer, currentPos + 14)
+                    loadingPtr = Read32(streamBuffer, currentPos + 16)
+                    instancePtr = Read32(streamBuffer, currentPos + 20)
+                    dataPtr = Read32(streamBuffer, currentPos + 24)
+                    data2Ptr = Read32(streamBuffer, currentPos + 28)
+
+                    Dim str(4) As String
+                    Dim item As ListViewItem
+                    Dim status As String = "Unknown"
+
+                    str(0) = n.ToString()
+                    str(1) = name
+                    str(2) = instanceCount.ToString()
+
+                    If name.Trim().Length < 1 Then
+                        status = "Unallocated"
+                    Else
+
+                        If loadingPtr = 0 And instancePtr <> 0 And (dataPtr <> 0 Or data2Ptr <> 0) And instanceCount > 0 Then
+                            status = "Used"
+                        ElseIf loadingPtr = 0 And instancePtr = 0 And dataPtr = 0 And data2Ptr = 0 And instanceCount = 0 Then
+                            status = "Free"
+                        ElseIf loadingPtr <> 0 And instancePtr = 0 And dataPtr = 0 And data2Ptr = 0 And instanceCount > 0 Then
+                            status = "Loading"
+                        ElseIf loadingPtr = 0 And instancePtr = 0 And dataPtr = 0 And data2Ptr = 0 And instanceCount > 0 Then
+                            status = "CORRUPT"
+                        End If
+
+                    End If
+
+                    str(3) = status
+
+                    item = New ListViewItem(str)
+                    ListBoxWindowActListInstance.ListView1.Items.Add(item)
+
+                    currentPos = currentPos + 32
+
+                Next
+
+                'Update ListView
+                Dim s As Sorter = DirectCast(ListBoxWindowActListInstance.ListView1.ListViewItemSorter, Sorter)
+
+                s.Column = CurrentSortingActListColumn
+                s.Order = CurrentSortingActListOrder
+
+                ListBoxWindowActListInstance.ListView1.Sort()
+
+                ListBoxWindowActListInstance.ListView1.EndUpdate()
+
+                Try
+
+                    ListBoxWindowActListInstance.ListView1.TopItem = ListBoxWindowActListInstance.ListView1.Items(topItemIndex)
+                    ListBoxWindowActListInstance.ListView1.Items(currentSelectedIndex).Selected = True
+
+                Catch ex As Exception
+
+                End Try
 
             End If
 
